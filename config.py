@@ -12,3 +12,4 @@ class ServerCommandType(Enum):
     SET_NAME = 3
     ERR = 4
     INFO = 5
+    GET_OWNER = 6

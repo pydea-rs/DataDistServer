@@ -2,12 +2,18 @@ from typing import Dict
 
 class Person:
 
+    @staticmethod
+    def removeQuotes(string: str) -> str:
+        if string[0] == "'" and string[-1] == "'":
+            return string[1:-1]
+        return string
+
     def __init__(self, id: int, firstname: str, lastname: str, email: str, city: str) -> None:
-        self.id: int = id
-        self.firstname: str = firstname
-        self.lastname: str = lastname
-        self.city: str = city
-        self.email: str = email
+        self.id: int = int(Person.removeQuotes(id))
+        self.firstname: str = Person.removeQuotes(firstname)
+        self.lastname: str = Person.removeQuotes(lastname)
+        self.city: str = Person.removeQuotes(city)
+        self.email: str = Person.removeQuotes(email)
         self.owner_id: int | None = None
 
     @property
