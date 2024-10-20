@@ -28,21 +28,6 @@ class Server:
         return Server.servers[port]
 
     @staticmethod
-    def createMessage(type: ServerCommandType, *args: List[str | int | float]):
-        arg_count: int = len(args)
-        i: int = 0
-        payload = {
-            "type": type,
-            "data": {},
-        }
-        if i % 2 != 0:
-            raise ValueError("Command payload args must be key-value pairs.")
-
-        while i < arg_count - 1:
-            payload["data"][args[i]] = args[i + 1]
-        return json.dumps(payload)
-
-    @staticmethod
     def loadDataTable(filename: str) -> List[Dict[str, str | int | float]]:
         with open(filename, mode="r") as file:
             source = csv.reader(file)
@@ -105,6 +90,7 @@ class Server:
             Thread(
                 target=self.handle_client, args=(ServerClient(self.last_client_id, client_addr, client_socket))
             ).start()
+        self.is_running = False
 
     def handle_client(self, client: ServerClient):
         print(f"{client.address} is trying to connect ...")
@@ -113,40 +99,45 @@ class Server:
         allocated_count = self.try_to_allocate_data(client)
         print(f"allocated {allocated_count} person's data to client#{client.id} with the ip:{client.address}")
         client.socket.sendall(
-            Server.createMessage(ServerCommandType.CONNECT, "id", client.id, "allocated", allocated_count)
+            create_message(MessageType.CONNECT.value, "id", client.id, 'name', client.name, "allocated", allocated_count)
         )
+
         while True:
             data = client.socket.recv(DATA_LENGTH)
 
             if not data:
+                try:
+                    client.socket.sendall(create_message(MessageType.CLOSE.value)) # inform client that the connection is closed.
+                except:
+                    pass
                 break
 
             payload = json.loads(data)
 
             match payload["type"]:
-                case ServerCommandType.CLOSE:
+                case MessageType.CLOSE.value:
                     break
-                case ServerCommandType.GET_MINE:
+                case MessageType.GET_MINE.value:
                     your_data = [person.to_dict() for person in self.data_owned_by(client.id)]
-                    client.socket.sendall(Server.createMessage(ServerCommandType.GET_MINE, "data", your_data))
-                case ServerCommandType.GET_OWNER:
+                    client.socket.sendall(create_message(MessageType.GET_MINE.value, "data", your_data))
+                case MessageType.GET_OWNER.value:
                     try:
                         if not "targets" in payload["data"]:
                             raise ValueError("You must specify the id of the data you're seeking.")
                         result = self.get_data_owners(payload["data"]["targets"])
-                        client.socket.sendall(Server.createMessage(ServerCommandType.GET_OWNER, "data", result))
+                        client.socket.sendall(create_message(MessageType.GET_OWNER.value, "data", result))
                         print(f"sent some data and their owners to client#{client.id}")
                     except Exception as ex:
                         print(f"failed to sent data & their owner to client#{client.id} because:", ex)
-                        client.socket.sendall(Server.createMessage(ServerCommandType.ERR, "msg", ex.__str__()))
-                case ServerCommandType.SET_NAME:
+                        client.socket.sendall(create_message(MessageType.ERR.value, "msg", ex.__str__()))
+                case MessageType.SET_NAME.value:
                     try:
                         if "data" in payload and "name" in payload["data"] and payload["data"]["name"] != client.name:
                             client.name = str(payload["data"]["name"])
                             print(f"client#{client.id} has been renamed to {client.name}")
                             client.socket.sendall(
-                                Server.createMessage(
-                                    ServerCommandType.INFO,
+                                create_message(
+                                    MessageType.INFO.value,
                                     "msg",
                                     f"You successfully renamed your client to {client.name}.",
                                 )
@@ -154,11 +145,11 @@ class Server:
                         else:
                             raise ValueError("To rename you must provide a new name.")
                     except Exception as ex:
-                        client.socket.sendall(Server.createMessage(ServerCommandType.ERR, "msg", ex.__str__()))
+                        client.socket.sendall(create_message(MessageType.ERR.value, "msg", ex.__str__()))
                         print(f"client#{client.id} failed to rename because:", ex)
                 case _:
                     client.socket.sendall(
-                        Server.createMessage(ServerCommandType.ERR, "msg", "You have sent an unknown request!")
+                        create_message(MessageType.ERR.value, "msg", "You have sent an unknown request!")
                     )
                     print(f"client#{client.id} has sent an unknown request! request data:", data)
         self.disconnect_client(client)
@@ -179,7 +170,10 @@ class Server:
         return result
 
     def disconnect_client(self, client: ServerClient):
-        client.socket.close()
+        try:
+            client.socket.close()
+        except:
+            pass
         print(f"client#{client.id} disconnected.")
         del self.clients[client.id]
 
