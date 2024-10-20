@@ -22,12 +22,12 @@ class Client:
     def show_data_table(self, data: List[Dict[str, int|str|float]], is_mine: bool = True):
         print(f'{'    ID':10}|{'     Firstname':20}|{'     Lastname':20}|{'     Email':30}|{'     City':20}|     Owner')
         print('       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ')
-        for person in data:
+        for person in data['data']:
             try:
                 owner = '   You' if is_mine else (person['owner'] or '      -')
                 print(f" {person['id']:9}| {person['firstname']:19}| {person['lastname']:19}| {person['email']:29}| {person['city']:19}| {owner}")
-            except:
-                print('\t\tError in this row ...')
+            except Exception as x:
+                print('\t\tError in this row ...', x)
         print()
 
     def handle_menu(self):
@@ -36,19 +36,19 @@ class Client:
             cmd = self.get_cmd()
             match cmd:
                 case '1':
-                    self.socket.sendall(create_message(MessageType.GET_MINE.value))
+                    self.socket.send(bytes(create_message(MessageType.GET_MINE.value), 'utf-8'))
                 case '2':
                     id_list = None
                     while not id_list or not id_list.replace(' ', '').isnumeric():
                         if id_list: # Means this is not the first round of the loop & user has entered something which was not in the desired format,. so show error.
                             print('ERROR: Please enter the data in the format expected!')
                         id_list = input('Enter the desired data ID list, separated by space:')
-                    self.socket.sendall(create_message(MessageType.GET_OWNER.value, 'targets', id_list.split()))
+                    self.socket.send(bytes(create_message(MessageType.GET_OWNER.value, 'targets', id_list.split()), 'utf-8'))
                 case '3':
                     new_name = input('Now enter your new desired name:')
                     self.rename(new_name)
                 case '0':
-                    self.socket.sendall(create_message(MessageType.CLOSE.value))
+                    self.socket.send(bytes(create_message(MessageType.CLOSE.value), 'utf-8'))
                 case _:
                     print('ERROR: Invalid command!')
                     cmd = None
@@ -60,12 +60,15 @@ class Client:
         print("Please wait a little to connect ...")
         while self.connected:
             payload = self.socket.recv(DATA_LENGTH)
+
             if payload:
                 payload = json.loads(payload)
-
-            if not payload or "type" not in payload or "data" not in payload:
+            else:
+                break
+            if not payload or "type" not in payload or ("data" not in payload and payload['type'] != MessageType.CLOSE.value):
                 print("Received some invalid format data from server which will be ignored ...")
                 continue
+
             match payload["type"]:
                 case MessageType.CONNECT.value:
                     data = payload["data"]

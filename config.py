@@ -3,7 +3,7 @@ from typing import List
 import json
 
 HOST = '127.0.0.1'
-PORT = 8000
+PORT = 8008
 DATA_LENGTH = 10240
 
 
@@ -29,4 +29,5 @@ def create_message(type: MessageType, *args: List[str | int | float]):
 
     while i < arg_count - 1:
         payload["data"][args[i]] = args[i + 1]
+        i += 1
     return json.dumps(payload)

@@ -6,7 +6,6 @@ import json
 from typing import List, Dict, Self
 import csv
 from random import shuffle, randint
-import math
 
 
 class ServerClient:
@@ -56,13 +55,15 @@ class Server:
         self.max_data_length: int = max_data_length
         Server.servers[self.port] = self
         self.load_data()
-        
+
     def load_data(self):
         try:
             data_table = Server.loadDataTable(self.source_filename)
             self.data = list(
                 map(
-                    lambda row: Person(row["'id'"], row["'firstname'"], row["'lastname'"], row["'email'"], row["'city'"]),
+                    lambda row: Person(
+                        row["'id'"], row["'firstname'"], row["'lastname'"], row["'email'"], row["'city'"]
+                    ),
                     data_table,
                 )
             )
@@ -88,7 +89,7 @@ class Server:
             self.last_client_id += 1
 
             Thread(
-                target=self.handle_client, args=(ServerClient(self.last_client_id, client_addr, client_socket))
+                target=self.handle_client, args=(ServerClient(self.last_client_id, client_addr, client_socket),)
             ).start()
         self.is_running = False
 
@@ -98,8 +99,14 @@ class Server:
 
         allocated_count = self.try_to_allocate_data(client)
         print(f"allocated {allocated_count} person's data to client#{client.id} with the ip:{client.address}")
-        client.socket.sendall(
-            create_message(MessageType.CONNECT.value, "id", client.id, 'name', client.name, "allocated", allocated_count)
+
+        client.socket.send(
+            bytes(
+                create_message(
+                    MessageType.CONNECT.value, "id", client.id, "name", client.name, "allocated", allocated_count
+                ),
+                "utf-8",
+            )
         )
 
         while True:
@@ -107,7 +114,9 @@ class Server:
 
             if not data:
                 try:
-                    client.socket.sendall(create_message(MessageType.CLOSE.value)) # inform client that the connection is closed.
+                    client.socket.send(
+                        bytes(create_message(MessageType.CLOSE.value), "utf-8")
+                    )  # inform client that the connection is closed.
                 except:
                     pass
                 break
@@ -119,54 +128,57 @@ class Server:
                     break
                 case MessageType.GET_MINE.value:
                     your_data = [person.to_dict() for person in self.data_owned_by(client.id)]
-                    client.socket.sendall(create_message(MessageType.GET_MINE.value, "data", your_data))
+                    client.socket.send(bytes(create_message(MessageType.GET_MINE.value, "data", your_data), "utf-8"))
                 case MessageType.GET_OWNER.value:
                     try:
                         if not "targets" in payload["data"]:
                             raise ValueError("You must specify the id of the data you're seeking.")
                         result = self.get_data_owners(payload["data"]["targets"])
-                        client.socket.sendall(create_message(MessageType.GET_OWNER.value, "data", result))
+                        client.socket.send(bytes(create_message(MessageType.GET_OWNER.value, "data", result), "utf-8"))
                         print(f"sent some data and their owners to client#{client.id}")
                     except Exception as ex:
                         print(f"failed to sent data & their owner to client#{client.id} because:", ex)
-                        client.socket.sendall(create_message(MessageType.ERR.value, "msg", ex.__str__()))
+                        client.socket.send(bytes(create_message(MessageType.ERR.value, "msg", ex.__str__()), "utf-8"))
                 case MessageType.SET_NAME.value:
                     try:
                         if "data" in payload and "name" in payload["data"] and payload["data"]["name"] != client.name:
                             client.name = str(payload["data"]["name"])
                             print(f"client#{client.id} has been renamed to {client.name}")
-                            client.socket.sendall(
-                                create_message(
-                                    MessageType.INFO.value,
-                                    "msg",
-                                    f"You successfully renamed your client to {client.name}.",
+                            client.socket.send(
+                                bytes(
+                                    create_message(
+                                        MessageType.INFO.value,
+                                        "msg",
+                                        f"You successfully renamed your client to {client.name}.",
+                                    )
                                 )
                             )
                         else:
                             raise ValueError("To rename you must provide a new name.")
                     except Exception as ex:
-                        client.socket.sendall(create_message(MessageType.ERR.value, "msg", ex.__str__()))
+                        client.socket.send(bytes(create_message(MessageType.ERR.value, "msg", ex.__str__()), "utf-8"))
                         print(f"client#{client.id} failed to rename because:", ex)
                 case _:
-                    client.socket.sendall(
-                        create_message(MessageType.ERR.value, "msg", "You have sent an unknown request!")
+                    client.socket.send(
+                        bytes(
+                            create_message(MessageType.ERR.value, "msg", "You have sent an unknown request!"), "utf-8"
+                        )
                     )
                     print(f"client#{client.id} has sent an unknown request! request data:", data)
         self.disconnect_client(client)
 
     def get_data_owners(self, data_ids: List[int] | int):
-        result = {}
+        result = []
         if not isinstance(data_ids, list):
             data_ids = [data_ids]
 
         for id in data_ids:
             id = int(id)
             person = next((person for person in self.data if person.id == id), None)
-            if not person:
-                result[id] = None
-            else:
-                result[id] = person.to_dict()
-                result[id]["owner"] = self.clients[person.owner_id].name if not person.is_free else None
+            if person:
+                data = person.to_dict()
+                data["owner"] = self.clients[person.owner_id].name if not person.is_free else None
+                result.append(data)
         return result
 
     def disconnect_client(self, client: ServerClient):
@@ -199,7 +211,7 @@ class Server:
 
     def data_allocation_length(self, available_data_length: int):
         return (
-            randint(self.min_data_length, math.min(available_data_length, self.max_data_length))
+            randint(self.min_data_length, min(available_data_length, self.max_data_length))
             if available_data_length >= self.min_data_length
             else available_data_length
         )
@@ -222,4 +234,4 @@ class Server:
 
 
 if __name__ == "__main__":
-    Server(8000, "./RandomData.csv").listen()
+    Server(PORT, "./RandomData.csv").listen()
