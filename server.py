@@ -40,7 +40,13 @@ class Server:
                 table.append(dict_row)
             return table
 
-    def __init__(self, port: int, source_filename: str, min_data_length: int = 10, max_data_length: int = 100) -> None:
+    def __init__(
+        self,
+        port: int,
+        source_filename: str,
+        min_data_length: int = 10,
+        max_data_length: int = 100,
+    ) -> None:
         if port in Server.servers and Server.servers[port].running:
             raise Exception(f"There is another server running on {HOST}:{port}")
         self.host = HOST
@@ -62,7 +68,11 @@ class Server:
             self.data = list(
                 map(
                     lambda row: Person(
-                        row["'id'"], row["'firstname'"], row["'lastname'"], row["'email'"], row["'city'"]
+                        row["'id'"],
+                        row["'firstname'"],
+                        row["'lastname'"],
+                        row["'email'"],
+                        row["'city'"],
                     ),
                     data_table,
                 )
@@ -89,21 +99,36 @@ class Server:
             self.last_client_id += 1
 
             Thread(
-                target=self.handle_client, args=(ServerClient(self.last_client_id, client_addr, client_socket),)
+                target=self.handle_client,
+                args=(ServerClient(self.last_client_id, client_addr, client_socket),),
             ).start()
         self.is_running = False
+
+    def is_name_unqiue(self, name: str):
+        for client_id in self.clients:
+            if self.clients[client_id].name == name:
+                return False
+        return True
 
     def handle_client(self, client: ServerClient):
         print(f"{client.address} is trying to connect ...")
         self.clients[client.id] = client
 
         allocated_count = self.try_to_allocate_data(client)
-        print(f"allocated {allocated_count} person's data to client#{client.id} with the ip:{client.address}")
+        print(
+            f"allocated {allocated_count} person's data to client#{client.id} with the ip:{client.address}"
+        )
 
         client.socket.send(
             bytes(
                 create_message(
-                    MessageType.CONNECT.value, "id", client.id, "name", client.name, "allocated", allocated_count
+                    MessageType.CONNECT,
+                    "id",
+                    client.id,
+                    "name",
+                    client.name,
+                    "allocated",
+                    allocated_count,
                 ),
                 "utf-8",
             )
@@ -115,7 +140,7 @@ class Server:
             if not data:
                 try:
                     client.socket.send(
-                        bytes(create_message(MessageType.CLOSE.value), "utf-8")
+                        bytes(create_message(MessageType.CLOSE), "utf-8")
                     )  # inform client that the connection is closed.
                 except:
                     pass
@@ -127,44 +152,96 @@ class Server:
                 case MessageType.CLOSE.value:
                     break
                 case MessageType.GET_MINE.value:
-                    your_data = [person.to_dict() for person in self.data_owned_by(client.id)]
-                    client.socket.send(bytes(create_message(MessageType.GET_MINE.value, "data", your_data), "utf-8"))
+                    your_data = [
+                        person.to_dict() for person in self.data_owned_by(client.id)
+                    ]
+                    client.socket.send(
+                        bytes(
+                            create_message(MessageType.GET_MINE, "data", your_data),
+                            "utf-8",
+                        )
+                    )
                 case MessageType.GET_OWNER.value:
                     try:
                         if not "targets" in payload["data"]:
-                            raise ValueError("You must specify the id of the data you're seeking.")
+                            raise ValueError(
+                                "You must specify the id of the data you're seeking."
+                            )
                         result = self.get_data_owners(payload["data"]["targets"])
-                        client.socket.send(bytes(create_message(MessageType.GET_OWNER.value, "data", result), "utf-8"))
+                        client.socket.send(
+                            bytes(
+                                create_message(MessageType.GET_OWNER, "data", result),
+                                "utf-8",
+                            )
+                        )
                         print(f"sent some data and their owners to client#{client.id}")
                     except Exception as ex:
-                        print(f"failed to sent data & their owner to client#{client.id} because:", ex)
-                        client.socket.send(bytes(create_message(MessageType.ERR.value, "msg", ex.__str__()), "utf-8"))
+                        print(
+                            f"failed to sent data & their owner to client#{client.id} because:",
+                            ex,
+                        )
+                        client.socket.send(
+                            bytes(
+                                create_message(MessageType.ERR, "msg", ex.__str__()),
+                                "utf-8",
+                            )
+                        )
                 case MessageType.SET_NAME.value:
                     try:
-                        if "data" in payload and "name" in payload["data"] and payload["data"]["name"] != client.name:
-                            client.name = str(payload["data"]["name"])
-                            print(f"client#{client.id} has been renamed to {client.name}")
-                            client.socket.send(
-                                bytes(
-                                    create_message(
-                                        MessageType.INFO.value,
-                                        "msg",
-                                        f"You successfully renamed your client to {client.name}.",
-                                    )
+                        if (
+                            "data" in payload
+                            and "name" in payload["data"]
+                            and payload["data"]["name"] != client.name
+                        ):
+                            name = str(payload["data"]["name"])
+                            message: str
+                            if not self.is_name_unqiue(name):
+                                print(
+                                    f"client#{client.id} tried to rename to a taken name: {client.name}"
                                 )
-                            )
+                                message = create_message(
+                                    MessageType.ERR,
+                                    "msg",
+                                    f"Name {name} is already taken. Please select another name.",
+                                )
+                            else:
+                                client.name = name
+                                message = create_message(
+                                    MessageType.INFO,
+                                    "msg",
+                                    f"You successfully renamed your client to {client.name}.",
+                                    'name',
+                                    client.name
+                                )
+                                print(
+                                    f"client#{client.id} has been renamed to {client.name}"
+                                )
+                            client.socket.send(bytes(message, "utf-8"))
                         else:
                             raise ValueError("To rename you must provide a new name.")
                     except Exception as ex:
-                        client.socket.send(bytes(create_message(MessageType.ERR.value, "msg", ex.__str__()), "utf-8"))
+                        client.socket.send(
+                            bytes(
+                                create_message(MessageType.ERR, "msg", ex.__str__()),
+                                "utf-8",
+                            )
+                        )
                         print(f"client#{client.id} failed to rename because:", ex)
                 case _:
                     client.socket.send(
                         bytes(
-                            create_message(MessageType.ERR.value, "msg", "You have sent an unknown request!"), "utf-8"
+                            create_message(
+                                MessageType.ERR,
+                                "msg",
+                                "You have sent an unknown request!",
+                            ),
+                            "utf-8",
                         )
                     )
-                    print(f"client#{client.id} has sent an unknown request! request data:", data)
+                    print(
+                        f"client#{client.id} has sent an unknown request! request data:",
+                        data,
+                    )
         self.disconnect_client(client)
 
     def get_data_owners(self, data_ids: List[int] | int):
@@ -177,7 +254,9 @@ class Server:
             person = next((person for person in self.data if person.id == id), None)
             if person:
                 data = person.to_dict()
-                data["owner"] = self.clients[person.owner_id].name if not person.is_free else None
+                data["owner"] = (
+                    self.clients[person.owner_id].name if not person.is_free else None
+                )
                 result.append(data)
         return result
 
@@ -191,7 +270,9 @@ class Server:
 
         released_data = self.data_owned_by(client_id=client.id)
         if not released_data:
-            print(f"client{client.id} has no data, so there is no data to be redistributed.")
+            print(
+                f"client{client.id} has no data, so there is no data to be redistributed."
+            )
             return
         clients_in_need = self.get_clients_by_poverty()
 
@@ -201,17 +282,23 @@ class Server:
 
             while i < allocation_length:
                 released_data[i].reallocate(client.id)
-        print(f"client#{client.id}'s allocated data has been redistributed among other clients.")
+        print(
+            f"client#{client.id}'s allocated data has been redistributed among other clients."
+        )
 
     def data_owned_by(self, client_id) -> List[Person]:
         return [person for person in self.data if person.is_owned_by(client_id)]
 
     def get_clients_by_poverty(self):
-        return sorted(self.clients.values(), key=lambda client: len(self.data_owned_by(client.id)))
+        return sorted(
+            self.clients.values(), key=lambda client: len(self.data_owned_by(client.id))
+        )
 
     def data_allocation_length(self, available_data_length: int):
         return (
-            randint(self.min_data_length, min(available_data_length, self.max_data_length))
+            randint(
+                self.min_data_length, min(available_data_length, self.max_data_length)
+            )
             if available_data_length >= self.min_data_length
             else available_data_length
         )

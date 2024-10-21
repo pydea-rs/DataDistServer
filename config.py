@@ -21,7 +21,7 @@ def create_message(type: MessageType, *args: List[str | int | float]):
     arg_count: int = len(args)
     i: int = 0
     payload = {
-        "type": type,
+        "type": type.value,
         "data": {},
     }
     if i % 2 != 0:

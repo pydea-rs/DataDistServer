@@ -15,13 +15,18 @@ class Client:
         self.connected = False
 
     def get_cmd(self):
+        Client.insertRow()
         return input(
-            "\Main Menu:\n\t1 Get My Data\n\t2 Get Data Owners\n\t3 Change My Name\n\t0 Disconnect & Exit\n Select your command: "
+            "\nMain Menu:\n\t1 Get My Data\n\t2 Get Data Owners\n\t3 Change My Name\n\t0 Disconnect & Exit\n Select your command: "
         )
+
+    @staticmethod
+    def insertRow():
+        print('       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ')
 
     def show_data_table(self, data: List[Dict[str, int|str|float]], is_mine: bool = True):
         print(f'{'    ID':10}|{'     Firstname':20}|{'     Lastname':20}|{'     Email':30}|{'     City':20}|     Owner')
-        print('       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ')
+        Client.insertRow()
         for person in data['data']:
             try:
                 owner = '   You' if is_mine else (person['owner'] or '      -')
@@ -36,19 +41,24 @@ class Client:
             cmd = self.get_cmd()
             match cmd:
                 case '1':
-                    self.socket.send(bytes(create_message(MessageType.GET_MINE.value), 'utf-8'))
+                    self.socket.send(bytes(create_message(MessageType.GET_MINE), 'utf-8'))
                 case '2':
                     id_list = None
                     while not id_list or not id_list.replace(' ', '').isnumeric():
                         if id_list: # Means this is not the first round of the loop & user has entered something which was not in the desired format,. so show error.
                             print('ERROR: Please enter the data in the format expected!')
                         id_list = input('Enter the desired data ID list, separated by space:')
-                    self.socket.send(bytes(create_message(MessageType.GET_OWNER.value, 'targets', id_list.split()), 'utf-8'))
+                    self.socket.send(bytes(create_message(MessageType.GET_OWNER, 'targets', id_list.split()), 'utf-8'))
                 case '3':
                     new_name = input('Now enter your new desired name:')
-                    self.rename(new_name)
+                    while new_name == self.name:
+                        new_name = input('This is your current name, enter a new one [write cancel if you do not want to rename anymore]: ')
+                    if new_name.lower() == 'cancel':
+                        cmd = None
+                        continue
+                    self.socket.send(bytes(create_message(MessageType.SET_NAME, 'name', new_name), 'utf-8'))
                 case '0':
-                    self.socket.send(bytes(create_message(MessageType.CLOSE.value), 'utf-8'))
+                    self.socket.send(bytes(create_message(MessageType.CLOSE), 'utf-8'))
                 case _:
                     print('ERROR: Invalid command!')
                     cmd = None
@@ -86,13 +96,21 @@ class Client:
                 case MessageType.CLOSE.value:
                     self.connected = False
                 case MessageType.ERR.value:
-                    print('ERROR! ', payload['msg'])
+                    print('ERROR! ', payload['data']['msg'])
                 case MessageType.INFO.value:
-                    print("> ", payload['msg'])
+                    print("> ", payload['data']['msg'])
+                    if 'name' in payload['data']:
+                        self.name = payload['data']['name']
                 case MessageType.GET_MINE.value:
-                    self.show_data_table(payload['data'], True)
+                    if 'data' not in payload or 'data' not in payload['data'] or not payload['data']['data']:
+                        print('No data is allocated to you ... You should wait until other client leave.')
+                    else:
+                        self.show_data_table(payload['data'], True)
                 case MessageType.GET_OWNER.value:
-                    self.show_data_table(payload['data'], False)
+                    if 'data' not in payload['data'] or not payload['data']['data']:
+                        print('No data found related to the IDs you provided!')
+                    else:
+                        self.show_data_table(payload['data'], False)
             if self.connected:
                 self.handle_menu()
             else:
