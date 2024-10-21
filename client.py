@@ -16,7 +16,7 @@ class Client:
 
     def get_cmd(self):
         return input(
-            "\nSelect your command:\n\t1 Get My Data\n\t2 Get Data Owners\n\t3 Change My Name\n\t0 Disconnect & Exit"
+            "\Main Menu:\n\t1 Get My Data\n\t2 Get Data Owners\n\t3 Change My Name\n\t0 Disconnect & Exit\n Select your command: "
         )
 
     def show_data_table(self, data: List[Dict[str, int|str|float]], is_mine: bool = True):
