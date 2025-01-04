@@ -4,5 +4,7 @@
 
   * Each time a new client connects to the server, it will allocate a specific-random number of rows, to that client, and whenever client disconnects, it frees them and randomly allocates them to other online clients.
 <hr />
+
 # Clients
+<hr />
   * Clients can fetch their allocated data, see each person is allocated to which client and such operations.
